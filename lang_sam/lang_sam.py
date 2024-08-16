@@ -1,5 +1,4 @@
 import os
-
 import groundingdino.datasets.transforms as T
 import numpy as np
 import torch
@@ -11,6 +10,9 @@ from groundingdino.util.utils import clean_state_dict
 from huggingface_hub import hf_hub_download
 from segment_anything import sam_model_registry
 from segment_anything import SamPredictor
+# from ImageProcessor import *
+from split_n_concat import ImageProcessor
+from transformers import Owlv2Processor, Owlv2ForObjectDetection
 
 SAM_MODELS = {
     "vit_h": "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth",
@@ -19,7 +21,6 @@ SAM_MODELS = {
 }
 
 CACHE_PATH = os.environ.get("TORCH_HOME", os.path.expanduser("~/.cache/torch/hub/checkpoints"))
-
 
 def load_model_hf(repo_id, filename, ckpt_config_filename, device='cpu'):
     cache_config_file = hf_hub_download(repo_id=repo_id, filename=ckpt_config_filename)
@@ -54,9 +55,8 @@ class LangSAM():
         self.return_prompts = return_prompts
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.build_groundingdino()
-        self.build_owlv2()
         self.build_sam(ckpt_path)
-        
+        self.build_owlv2()  # OWL-ViT 모델 초기화
 
     def build_sam(self, ckpt_path):
         if self.sam_type is None or ckpt_path is None:
@@ -91,27 +91,39 @@ class LangSAM():
         self.groundingdino = load_model_hf(ckpt_repo_id, ckpt_filename, ckpt_config_filename)
 
     def build_owlv2(self):
-        ckpt_repo_id = "google/owlv2-large-patch14-ensemble"  # OWL-ViT의 Hugging Face repo ID
-        # ckpt_filename = "pytorch_model.bin"  # OWL-ViT 모델 가중치 파일 이름
-        # ckpt_config_filename = "config.json"  # OWL-ViT 모델 설정 파일 이름
+        ckpt_repo_id = "google/owlv2-large-patch14-ensemble"  # OWLv2 Hugging Face repo ID
 
-        # OWL-ViT 모델과 프로세서 로드
+        # OWLv2 load
         self.owlv2_processor = Owlv2Processor.from_pretrained(ckpt_repo_id)
         self.owlv2_model = Owlv2ForObjectDetection.from_pretrained(ckpt_repo_id)
         self.owlv2_model.to(self.device)
         print(f"Model loaded done.")
 
-    def predict_dino(self, image_pil, text_prompt, box_threshold, text_threshold):
-        image_trans = transform_image(image_pil)
-        boxes, logits, phrases = predict(model=self.groundingdino,
-                                         image=image_trans,
-                                         caption=text_prompt,
-                                         box_threshold=box_threshold,
-                                         text_threshold=text_threshold,
-                                         remove_combined=self.return_prompts,
-                                         device=self.device)
-        W, H = image_pil.size
-        boxes = box_ops.box_cxcywh_to_xyxy(boxes) * torch.Tensor([W, H, W, H])
+
+    def predict_dino(self, image_pil, image_path, text_prompt, box_threshold, text_threshold):
+        imgs = ImageProcessor(image_path, True).img_split()
+        all_boxes = []
+        all_logits = []
+        all_phrases = []
+
+        for img in imgs:
+            # image preprocessing -> split 8 pieces
+            image_trans = transform_image(img)
+            boxes, logits, phrases = predict(model=self.groundingdino,
+                                             image=image_trans,
+                                             caption=text_prompt,
+                                             box_threshold=box_threshold,
+                                             text_threshold=text_threshold,
+                                             remove_combined=self.return_prompts,
+                                             device=self.device)
+
+            # save predict results
+            all_boxes.append(boxes)
+            all_logits.append(logits)
+            all_phrases.append(phrases)
+
+        # concat image
+        boxes, logits, phrases = ImageProcessor(image_path).img_concat(imgs, all_boxes, all_logits, all_phrases)
 
         return boxes, logits, phrases
 
@@ -122,18 +134,17 @@ class LangSAM():
           all_labels = []
 
           for img in imgs:
-              # 이미지와 텍스트를 OWL-ViT v2 모델에 입력으로 줍니다.
+              # input image & text to OWLv2
               inputs = self.owlv2_processor(text=text_prompt, images=img, return_tensors="pt").to(self.device)
               inputs = {k: v.to(self.device) for k, v in inputs.items()}
-              # OWL-ViT v2로 추론 수행
+              # OWLv2 inference
               with torch.no_grad():
                   outputs = self.owlv2_model(**inputs)
 
-              # 결과에서 상자(boxes) 및 점수(scores) 추출
+              # extract boxes & scores
               target_sizes = torch.Tensor([img.size[::-1]]).to(self.device)
               results = self.owlv2_processor.post_process_object_detection(outputs=outputs, target_sizes=target_sizes, threshold=box_threshold)
-
-              # 추출된 박스, 점수, 레이블을 각각 리스트에 추가
+              
               boxes = results[0]["boxes"]
               scores = results[0]["scores"]
               labels = results[0]["labels"]
@@ -142,7 +153,7 @@ class LangSAM():
               all_scores.append(scores)
               all_labels.append(labels)
 
-          # 이미지와 예측 결과를 병합합니다.
+          # concat image
           boxes, scores, labels = ImageProcessor(image_path).img_concat(imgs, all_boxes, all_scores, all_labels)
 
           return boxes, scores, labels
@@ -150,6 +161,8 @@ class LangSAM():
     def predict_sam(self, image_pil, boxes):
         image_array = np.asarray(image_pil)
         self.sam.set_image(image_array)
+        # boxes = boxes.cpu().numpy()
+        boxes = boxes.to(self.device)
         transformed_boxes = self.sam.transform.apply_boxes_torch(boxes, image_array.shape[:2])
         masks, _, _ = self.sam.predict_torch(
             point_coords=None,
@@ -159,10 +172,10 @@ class LangSAM():
         )
         return masks.cpu()
 
-    def predict(self, image_pil, text_prompt, box_threshold=0.3, text_threshold=0.25):
-        boxes, logits, phrases = self.predict_dino(image_pil, text_prompt, box_threshold, text_threshold)  ## can modify to other model
+    def predict(self, image_pil, image_pil2, image_path, text_prompt, box_threshold=0.3, text_threshold=0.25):
+        boxes, logits, phrases = self.predict_owlv2(image_pil, image_path, text_prompt, box_threshold, text_threshold)  # can change other models
         masks = torch.tensor([])
         if len(boxes) > 0:
-            masks = self.predict_sam(image_pil, boxes)
+            masks = self.predict_sam(image_pil2, boxes)
             masks = masks.squeeze(1)
         return masks, boxes, phrases, logits
