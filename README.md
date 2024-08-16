@@ -1,3 +1,7 @@
+# Modifications
+
+Added and modified code to take advantage of OWLv2 and Grounding DINO 1.5 in code that was only available with Grounding DINO.
+
 # Language Segment-Anything
 
 Language Segment-Anything is an open-source project that combines the power of instance segmentation and text prompts to generate masks for specific objects in images. Built on the recently released Meta model, segment-anything, and the GroundingDINO detection model, it's an easy-to-use and effective tool for object detection and image segmentation.
