@@ -1,6 +1,7 @@
 # Modifications
 
 Added and modified code to take advantage of OWLv2 and Grounding DINO 1.5 in code that was only available with Grounding DINO.
+    
 
 # Language Segment-Anything
 
