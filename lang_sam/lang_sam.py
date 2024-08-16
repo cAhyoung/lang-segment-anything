@@ -54,7 +54,9 @@ class LangSAM():
         self.return_prompts = return_prompts
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.build_groundingdino()
+        self.build_owlv2()
         self.build_sam(ckpt_path)
+        
 
     def build_sam(self, ckpt_path):
         if self.sam_type is None or ckpt_path is None:
@@ -88,6 +90,17 @@ class LangSAM():
         ckpt_config_filename = "GroundingDINO_SwinB.cfg.py"
         self.groundingdino = load_model_hf(ckpt_repo_id, ckpt_filename, ckpt_config_filename)
 
+    def build_owlv2(self):
+        ckpt_repo_id = "google/owlv2-large-patch14-ensemble"  # OWL-ViT의 Hugging Face repo ID
+        # ckpt_filename = "pytorch_model.bin"  # OWL-ViT 모델 가중치 파일 이름
+        # ckpt_config_filename = "config.json"  # OWL-ViT 모델 설정 파일 이름
+
+        # OWL-ViT 모델과 프로세서 로드
+        self.owlv2_processor = Owlv2Processor.from_pretrained(ckpt_repo_id)
+        self.owlv2_model = Owlv2ForObjectDetection.from_pretrained(ckpt_repo_id)
+        self.owlv2_model.to(self.device)
+        print(f"Model loaded done.")
+
     def predict_dino(self, image_pil, text_prompt, box_threshold, text_threshold):
         image_trans = transform_image(image_pil)
         boxes, logits, phrases = predict(model=self.groundingdino,
@@ -102,6 +115,38 @@ class LangSAM():
 
         return boxes, logits, phrases
 
+    def predict_owlv2(self, image_pil, image_path, text_prompt, box_threshold=0.3, text_threshold=0.25):
+          imgs = ImageProcessor(image_path, False).img_split()
+          all_boxes = []
+          all_scores = []
+          all_labels = []
+
+          for img in imgs:
+              # 이미지와 텍스트를 OWL-ViT v2 모델에 입력으로 줍니다.
+              inputs = self.owlv2_processor(text=text_prompt, images=img, return_tensors="pt").to(self.device)
+              inputs = {k: v.to(self.device) for k, v in inputs.items()}
+              # OWL-ViT v2로 추론 수행
+              with torch.no_grad():
+                  outputs = self.owlv2_model(**inputs)
+
+              # 결과에서 상자(boxes) 및 점수(scores) 추출
+              target_sizes = torch.Tensor([img.size[::-1]]).to(self.device)
+              results = self.owlv2_processor.post_process_object_detection(outputs=outputs, target_sizes=target_sizes, threshold=box_threshold)
+
+              # 추출된 박스, 점수, 레이블을 각각 리스트에 추가
+              boxes = results[0]["boxes"]
+              scores = results[0]["scores"]
+              labels = results[0]["labels"]
+
+              all_boxes.append(boxes)
+              all_scores.append(scores)
+              all_labels.append(labels)
+
+          # 이미지와 예측 결과를 병합합니다.
+          boxes, scores, labels = ImageProcessor(image_path).img_concat(imgs, all_boxes, all_scores, all_labels)
+
+          return boxes, scores, labels
+
     def predict_sam(self, image_pil, boxes):
         image_array = np.asarray(image_pil)
         self.sam.set_image(image_array)
@@ -115,7 +160,7 @@ class LangSAM():
         return masks.cpu()
 
     def predict(self, image_pil, text_prompt, box_threshold=0.3, text_threshold=0.25):
-        boxes, logits, phrases = self.predict_dino(image_pil, text_prompt, box_threshold, text_threshold)
+        boxes, logits, phrases = self.predict_dino(image_pil, text_prompt, box_threshold, text_threshold)  ## can modify to other model
         masks = torch.tensor([])
         if len(boxes) > 0:
             masks = self.predict_sam(image_pil, boxes)
