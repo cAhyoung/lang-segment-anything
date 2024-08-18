@@ -4,6 +4,7 @@ Added and modified code to take advantage of OWLv2 and Grounding DINO 1.5 in cod
 
 ## Installation for Modification version (based on colab)
 1. Clone lang-segment-anything
+   - Only using langSAM folder
 ```
 !git clone https://github.com/luca-medeiros/lang-segment-anything && cd lang-segment-anything
 !pip install torch torchvision
@@ -24,6 +25,7 @@ Added and modified code to take advantage of OWLv2 and Grounding DINO 1.5 in cod
 !pip install --upgrade "jax[cuda]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 ```
 3. Clone Grounding DINO
+   - Only using groundingdino folder
 ```
 !git clone https://github.com/IDEA-Research/GroundingDINO.git
 %cd GroundingDINO
