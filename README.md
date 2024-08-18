@@ -4,7 +4,7 @@ Added and modified code to take advantage of OWLv2 and Grounding DINO 1.5 in cod
 
 ## Installation for Modification version (based on colab)
 1. Clone lang-segment-anything
-   - Only using langSAM folder
+   - Only using lang_sam folder
 ```
 !git clone https://github.com/luca-medeiros/lang-segment-anything && cd lang-segment-anything
 !pip install torch torchvision
