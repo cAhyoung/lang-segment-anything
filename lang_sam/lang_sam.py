@@ -10,9 +10,9 @@ from groundingdino.util.utils import clean_state_dict
 from huggingface_hub import hf_hub_download
 from segment_anything import sam_model_registry
 from segment_anything import SamPredictor
-# from ImageProcessor import *
 from split_n_concat import ImageProcessor
 from transformers import Owlv2Processor, Owlv2ForObjectDetection
+from .gdino import GroundingDINOAPIWrapper, visualize
 
 SAM_MODELS = {
     "vit_h": "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth",
@@ -57,6 +57,7 @@ class LangSAM():
         self.build_groundingdino()
         self.build_sam(ckpt_path)
         self.build_owlv2()  # OWL-ViT 모델 초기화
+        self.gdino = GroundingDINOAPIWrapper('key')
 
     def build_sam(self, ckpt_path):
         if self.sam_type is None or ckpt_path is None:
@@ -126,6 +127,46 @@ class LangSAM():
         boxes, logits, phrases = ImageProcessor(image_path).img_concat(imgs, all_boxes, all_logits, all_phrases)
 
         return boxes, logits, phrases
+
+    def predict_dino15(self, image_pil, image_path, text_prompt, box_threshold, text_threshold):
+        # 이미지 분할
+        imgs = ImageProcessor(image_path).img_split()
+        all_boxes = []
+        all_logits = []
+        all_phrases = []
+    
+        for idx, img in enumerate(imgs):
+            # img가 PIL 이미지인지 확인 후, 그렇지 않다면 fromarray로 변환
+            if isinstance(img, Image.Image):
+                img_pil = img
+            else:
+                img_pil = Image.fromarray(img)
+    
+            temp_img_path = f"/tmp/temp_img_{idx}.jpg"  # 각 이미지에 고유한 임시 파일 이름 사용
+            img_pil.save(temp_img_path)
+    
+            # API 호출을 위한 프롬프트 설정
+            prompts = dict(image=temp_img_path, prompt=text_prompt)
+            results = self.gdino.inference(prompts)
+    
+            # API 호출 결과 추출
+            boxes = torch.tensor(results['boxes'])
+            logits = torch.tensor(results['scores'])
+            phrases = results.get('labels', [])
+    
+            # 결과 저장
+            all_boxes.append(boxes)
+            all_logits.append(logits)
+            all_phrases.append(phrases)
+    
+            # 임시 파일 삭제
+            os.remove(temp_img_path)
+    
+        # 분할된 이미지 결과 결합
+        boxes, logits, phrases = ImageProcessor(image_path).img_concat(imgs, all_boxes, all_logits, all_phrases)
+    
+        return boxes, logits, phrases
+
 
     def predict_owlv2(self, image_pil, image_path, text_prompt, box_threshold=0.3, text_threshold=0.25):
           imgs = ImageProcessor(image_path, False).img_split()
