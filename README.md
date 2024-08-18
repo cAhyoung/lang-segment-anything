@@ -36,7 +36,9 @@ Added and modified code to take advantage of OWLv2 and Grounding DINO 1.5 in cod
 %cd ../..
 ```
 4. Clone Grounding DINO 1.5
+   - Only using gdino folder
 ```
+!git clone https://github.com/IDEA-Research/Grounding-DINO-1.5-API.git
 ```
 5. Clone SAM
 ```
