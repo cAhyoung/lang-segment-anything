@@ -1,7 +1,45 @@
 # Modifications
 
 Added and modified code to take advantage of OWLv2 and Grounding DINO 1.5 in code that was only available with Grounding DINO.
-    
+
+## Installation for Modification version (based on colab)
+1. Clone lang-segment-anything
+```
+!git clone https://github.com/luca-medeiros/lang-segment-anything && cd lang-segment-anything
+!pip install torch torchvision
+%cd lang-segment-anything/
+!pip install -e .
+%cd ..
+```
+2. Clone owlv2
+```
+### OWLv2 사용을 위한 세팅
+!git clone https://github.com/google-research/scenic.git
+%cd scenic
+!python -m pip install -vq .
+!python -m pip install -r scenic/projects/owl_vit/requirements.txt
+%cd ..
+
+# For GPU support:
+!pip install --upgrade "jax[cuda]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+```
+3. Clone Grounding DINO
+```
+!git clone https://github.com/IDEA-Research/GroundingDINO.git
+%cd GroundingDINO
+!pip install -e .
+!mkdir weights
+%cd weights
+!wget -q https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth
+%cd ../..
+```
+4. Clone Grounding DINO 1.5
+```
+```
+5. Clone SAM
+```
+!pip install git+https://github.com/facebookresearch/segment-anything.git
+```
 
 # Language Segment-Anything
 
