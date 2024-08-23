@@ -10,6 +10,8 @@ from groundingdino.util.utils import clean_state_dict
 from huggingface_hub import hf_hub_download
 from segment_anything import sam_model_registry
 from segment_anything import SamPredictor
+from sam2.build_sam import build_sam2
+from sam2.sam2_image_predictor import SAM2ImagePredictor
 from split_n_concat import ImageProcessor
 from transformers import Owlv2Processor, Owlv2ForObjectDetection
 from .gdino import GroundingDINOAPIWrapper, visualize
