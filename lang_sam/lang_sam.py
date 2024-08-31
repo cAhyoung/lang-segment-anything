@@ -58,10 +58,11 @@ def transform_image(image) -> torch.Tensor:
 
 class LangSAM():
 
-    def __init__(self, sam_type="vit_h", sam2_type="hiera_large", ckpt_path=None, return_prompts: bool = False):
+    def __init__(self, sam_type="vit_h", sam2_type="hiera_large", ckpt_path=None, return_prompts: bool = False, split=True):
         self.sam_type = sam_type
         self.sam2_type = sam2_type
         self.return_prompts = return_prompts
+        self.split = split
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.build_groundingdino()
         self.build_sam(ckpt_path)
@@ -115,14 +116,33 @@ class LangSAM():
 
 
     def predict_dino(self, image_pil, image_path, text_prompt, box_threshold, text_threshold):
-        imgs = ImageProcessor(image_path, True).img_split()
-        all_boxes = []
-        all_logits = []
-        all_phrases = []
+        if self.split:
+            imgs = ImageProcessor(image_path, True).img_split()
+            all_boxes = []
+            all_logits = []
+            all_phrases = []
+            
+            for img in imgs:
+                # image preprocessing -> split 8 pieces
+                image_trans = transform_image(img)
+                boxes, logits, phrases = predict(model=self.groundingdino,
+                                                 image=image_trans,
+                                                 caption=text_prompt,
+                                                 box_threshold=box_threshold,
+                                                 text_threshold=text_threshold,
+                                                 remove_combined=self.return_prompts,
+                                                 device=self.device)
+    
+                # save predict results
+                all_boxes.append(boxes)
+                all_logits.append(logits)
+                all_phrases.append(phrases)
+    
+            # concat image
+            boxes, logits, phrases = ImageProcessor(image_path).img_concat(imgs, all_boxes, all_logits, all_phrases)
 
-        for img in imgs:
-            # image preprocessing -> split 8 pieces
-            image_trans = transform_image(img)
+        else:
+            image_trans = transform_image(image_pil)
             boxes, logits, phrases = predict(model=self.groundingdino,
                                              image=image_trans,
                                              caption=text_prompt,
@@ -130,15 +150,9 @@ class LangSAM():
                                              text_threshold=text_threshold,
                                              remove_combined=self.return_prompts,
                                              device=self.device)
-
-            # save predict results
-            all_boxes.append(boxes)
-            all_logits.append(logits)
-            all_phrases.append(phrases)
-
-        # concat image
-        boxes, logits, phrases = ImageProcessor(image_path).img_concat(imgs, all_boxes, all_logits, all_phrases)
-
+            W, H = image_pil.size
+            boxes = box_ops.box_cxcywh_to_xyxy(boxes) * torch.Tensor([W, H, W, H])
+        
         return boxes, logits, phrases
 
     def predict_dino15(self, image_pil, image_path, text_prompt, box_threshold, text_threshold):
@@ -182,35 +196,50 @@ class LangSAM():
 
 
     def predict_owlv2(self, image_pil, image_path, text_prompt, box_threshold=0.3, text_threshold=0.25):
-          imgs = ImageProcessor(image_path, False).img_split()
-          all_boxes = []
-          all_scores = []
-          all_labels = []
+        if self.split:  
+            imgs = ImageProcessor(image_path, False).img_split()
+            all_boxes = []
+            all_scores = []
+            all_labels = []
+    
+            for img in imgs:
+                # input image & text to OWLv2
+                inputs = self.owlv2_processor(text=text_prompt, images=img, return_tensors="pt").to(self.device)
+                inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                # OWLv2 inference
+                with torch.no_grad():
+                    outputs = self.owlv2_model(**inputs)
+    
+                # extract boxes & scores
+                target_sizes = torch.Tensor([img.size[::-1]]).to(self.device)
+                results = self.owlv2_processor.post_process_object_detection(outputs=outputs, target_sizes=target_sizes, threshold=box_threshold)
+                  
+                boxes = results[0]["boxes"]
+                scores = results[0]["scores"]
+                labels = results[0]["labels"]
+    
+                all_boxes.append(boxes)
+                all_scores.append(scores)
+                all_labels.append(labels)
+    
+                # concat image
+                boxes, scores, labels = ImageProcessor(image_path).img_concat(imgs, all_boxes, all_scores, all_labels)
+        else:
+            # input image & text to OWLv2
+            input = self.owlv2_processor(text=text_prompt, images=image_pil, return_tensors="pt").to(self.device)
+            # OWLv2 inference
+            with torch.no_grad():
+                outputs = self.owlv2_model(**inputs)
+    
+            # extract boxes & scores
+            target_sizes = torch.Tensor([img.size[::-1]]).to(self.device)
+            results = self.owlv2_processor.post_process_object_detection(outputs=outputs, target_sizes=target_sizes, threshold=box_threshold)
+                  
+            boxes = results[0]["boxes"]
+            scores = results[0]["scores"]
+            labels = results[0]["labels"]
 
-          for img in imgs:
-              # input image & text to OWLv2
-              inputs = self.owlv2_processor(text=text_prompt, images=img, return_tensors="pt").to(self.device)
-              inputs = {k: v.to(self.device) for k, v in inputs.items()}
-              # OWLv2 inference
-              with torch.no_grad():
-                  outputs = self.owlv2_model(**inputs)
-
-              # extract boxes & scores
-              target_sizes = torch.Tensor([img.size[::-1]]).to(self.device)
-              results = self.owlv2_processor.post_process_object_detection(outputs=outputs, target_sizes=target_sizes, threshold=box_threshold)
-              
-              boxes = results[0]["boxes"]
-              scores = results[0]["scores"]
-              labels = results[0]["labels"]
-
-              all_boxes.append(boxes)
-              all_scores.append(scores)
-              all_labels.append(labels)
-
-          # concat image
-          boxes, scores, labels = ImageProcessor(image_path).img_concat(imgs, all_boxes, all_scores, all_labels)
-
-          return boxes, scores, labels
+        return boxes, scores, labels
 
     def predict_sam(self, image_pil, boxes):
         image_array = np.asarray(image_pil)
