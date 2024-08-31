@@ -10,7 +10,6 @@ from groundingdino.util.utils import clean_state_dict
 from huggingface_hub import hf_hub_download
 from segment_anything import sam_model_registry
 from segment_anything import SamPredictor
-from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 from split_n_concat import ImageProcessor
 from transformers import Owlv2Processor, Owlv2ForObjectDetection
@@ -20,6 +19,13 @@ SAM_MODELS = {
     "vit_h": "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth",
     "vit_l": "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth",
     "vit_b": "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth"
+}
+
+SAM2_MODELS = {
+    "hiera_tiny" : "facebook/sam2-hiera-tiny",
+    "hiera_small" : "facebook/sam2-hiera-small",
+    "hiera_base_plus" : "facebook/sam2-hiera-base-plus", 
+    "hiera_large" : "facebook/sam2-hiera-large"
 }
 
 CACHE_PATH = os.environ.get("TORCH_HOME", os.path.expanduser("~/.cache/torch/hub/checkpoints"))
@@ -52,14 +58,16 @@ def transform_image(image) -> torch.Tensor:
 
 class LangSAM():
 
-    def __init__(self, sam_type="vit_h", ckpt_path=None, return_prompts: bool = False):
+    def __init__(self, sam_type="vit_h", sam2_type="hiera_large", ckpt_path=None, return_prompts: bool = False):
         self.sam_type = sam_type
+        self.sam2_type = sam2_type
         self.return_prompts = return_prompts
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.build_groundingdino()
         self.build_sam(ckpt_path)
-        self.build_owlv2()  # OWL-ViT 모델 초기화
+        self.build_owlv2() 
         self.gdino = GroundingDINOAPIWrapper('key')
+        self.build_sam2()
 
     def build_sam(self, ckpt_path):
         if self.sam_type is None or ckpt_path is None:
@@ -86,6 +94,9 @@ class LangSAM():
                 using matching model type AND checkpoint path")
             sam.to(device=self.device)
             self.sam = SamPredictor(sam)
+    
+    def build_sam2(self)
+        self.sam2 = SAM2ImagePredictor.from_pretrained(SAM2_MODELS[self.sam2_type])
 
     def build_groundingdino(self):
         ckpt_repo_id = "ShilongLiu/GroundingDINO"
@@ -214,11 +225,18 @@ class LangSAM():
             multimask_output=False,
         )
         return masks.cpu()
+      
+    def predict_sam2(self, image_pil, boxes):
+        with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
+          self.sam2.set_image(image_pil)
+          masks, _, _ = self.sam2.predict(boxes)
+
+          return masks.cpu()
 
     def predict(self, image_pil, image_pil2, image_path, text_prompt, box_threshold=0.3, text_threshold=0.25):
         boxes, logits, phrases = self.predict_owlv2(image_pil, image_path, text_prompt, box_threshold, text_threshold)  # can change other models
         masks = torch.tensor([])
         if len(boxes) > 0:
-            masks = self.predict_sam(image_pil2, boxes)
+            masks = self.predict_sam(image_pil2, boxes)  ## if you want to use sam2, you should change predict_sam2()
             masks = masks.squeeze(1)
         return masks, boxes, phrases, logits
