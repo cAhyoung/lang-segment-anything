@@ -155,43 +155,48 @@ class LangSAM():
         
         return boxes, logits, phrases
 
-    def predict_dino15(self, image_pil, image_path, text_prompt, box_threshold, text_threshold):
-        # 이미지 분할
-        imgs = ImageProcessor(image_path).img_split()
-        all_boxes = []
-        all_logits = []
-        all_phrases = []
+    def predict_dino15(self, image_pil, image_path, text_prompt, box_threshold, text_threshold, return_mask=False):
+        if self.split:
+            imgs = ImageProcessor(image_path).img_split()
+          
+            all_boxes = []
+            all_logits = []
+            all_phrases = []
     
-        for idx, img in enumerate(imgs):
-            # img가 PIL 이미지인지 확인 후, 그렇지 않다면 fromarray로 변환
-            if isinstance(img, Image.Image):
-                img_pil = img
-            else:
-                img_pil = Image.fromarray(img)
+            for img in imgs:
+                # PIL 이미지를 Numpy 배열로 변환
+                img_array = np.array(img)
     
-            temp_img_path = f"/tmp/temp_img_{idx}.jpg"  # 각 이미지에 고유한 임시 파일 이름 사용
-            img_pil.save(temp_img_path)
+                # API 호출에 사용할 프롬프트 설정
+                prompts = dict(image=img_array, prompt=text_prompt)  # 변환된 numpy 배열 사용
     
-            # API 호출을 위한 프롬프트 설정
-            prompts = dict(image=temp_img_path, prompt=text_prompt)
-            results = self.gdino.inference(prompts)
+                # Grounding DINO API 호출
+                results = self.gdino.inference(prompts, return_mask=return_mask)
     
-            # API 호출 결과 추출
+                # 결과에서 필요한 데이터를 추출
+                boxes = torch.tensor(results['boxes'])
+                logits = torch.tensor(results['scores'])  # logits 대신 scores 사용
+                phrases = results.get('labels', [])  # labels이 있는 경우에만 가져오기
+    
+                # 예측 결과 저장
+                all_boxes.append(boxes)
+                all_logits.append(logits)
+                all_phrases.append(phrases)
+    
+            # 이미지 프로세서의 img_concat 메서드를 사용하여 결과 결합
+            boxes, logits, phrases = ImageProcessor(image_path).img_concat(imgs, all_boxes, all_logits, all_phrases)
+        else:
+            # API 호출에 사용할 프롬프트 설정
+            prompts = dict(image=image_path, prompt=text_prompt)
+              
+            # Grounding DINO API 호출
+            results = self.gdino.inference(prompts, return_mask=return_mask)
+    
+            # 결과에서 필요한 데이터를 추출
             boxes = torch.tensor(results['boxes'])
-            logits = torch.tensor(results['scores'])
-            phrases = results.get('labels', [])
-    
-            # 결과 저장
-            all_boxes.append(boxes)
-            all_logits.append(logits)
-            all_phrases.append(phrases)
-    
-            # 임시 파일 삭제
-            os.remove(temp_img_path)
-    
-        # 분할된 이미지 결과 결합
-        boxes, logits, phrases = ImageProcessor(image_path).img_concat(imgs, all_boxes, all_logits, all_phrases)
-    
+            logits = torch.tensor(results['scores'])  # logits 대신 scores 사용
+            phrases = results.get('labels', [])  # labels이 있는 경우에만 가져오기
+
         return boxes, logits, phrases
 
 
