@@ -44,6 +44,12 @@ Added and modified code to take advantage of OWLv2 and Grounding DINO 1.5 in cod
 ```
 !pip install git+https://github.com/facebookresearch/segment-anything.git
 ```
+6. Clone SAM2
+   - only using sam2 folder
+```
+!git clone https://github.com/facebookresearch/segment-anything-2.git
+!cd segment-anything-2 & pip install -e .
+```
 
 # Language Segment-Anything
 
