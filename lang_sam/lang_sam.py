@@ -96,7 +96,7 @@ class LangSAM():
             sam.to(device=self.device)
             self.sam = SamPredictor(sam)
     
-    def build_sam2(self)
+    def build_sam2(self):
         self.sam2 = SAM2ImagePredictor.from_pretrained(SAM2_MODELS[self.sam2_type])
 
     def build_groundingdino(self):
@@ -257,7 +257,8 @@ class LangSAM():
       
     def predict_sam2(self, image_pil, boxes):
         with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
-          self.sam2.set_image(image_pil)
+          self.sam2.set_image(image_pil.to(self.device))
+          boxes = boxes.to(self.device)
           masks, _, _ = self.sam2.predict(box=boxes)
 
           return masks.cpu()
