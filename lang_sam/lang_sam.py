@@ -204,58 +204,59 @@ class LangSAM():
 
     def predict_owlv2(self, image_pil, image_path, text_prompt, box_threshold=0.3, text_threshold=0.25):
         try:
-            if self.split:  
-                imgs = ImageProcessor(image_path, False).img_split()
-                all_boxes = []
-                all_scores = []
-                all_labels = []
+          inputs = None
+          if self.split:  
+              imgs = ImageProcessor(image_path, False).img_split()
+              all_boxes = []
+              all_scores = []
+              all_labels = []
         
-                for img in imgs:
-                    # input image & text to OWLv2
-                    inputs = self.owlv2_processor(text=text_prompt, images=img, return_tensors="pt").to(self.device)
-                    print(f"inputs before device: {inputs}")  # 로그 추가
-                    inputs = {k: v.to(self.device) for k, v in inputs.items()}
-                    print(f"inputs after device: {inputs}")  # 로그 추가
-                    # OWLv2 inference
-                    with torch.no_grad():
-                        outputs = self.owlv2_model(**inputs)
+              for img in imgs:
+                  # input image & text to OWLv2
+                  inputs = self.owlv2_processor(text=text_prompt, images=img, return_tensors="pt").to(self.device)
+                  print(f"inputs before device: {inputs}")  # 로그 추가
+                  inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                  print(f"inputs after device: {inputs}")  # 로그 추가
+                  # OWLv2 inference
+                  with torch.no_grad():
+                      outputs = self.owlv2_model(**inputs)
         
-                    # extract boxes & scores
-                    target_sizes = torch.Tensor([img.size[::-1]]).to(self.device)
-                    results = self.owlv2_processor.post_process_object_detection(outputs=outputs, target_sizes=target_sizes, threshold=box_threshold)
+                  # extract boxes & scores
+                  target_sizes = torch.Tensor([img.size[::-1]]).to(self.device)
+                  results = self.owlv2_processor.post_process_object_detection(outputs=outputs, target_sizes=target_sizes, threshold=box_threshold)
                       
-                    boxes = results[0]["boxes"]
-                    scores = results[0]["scores"]
-                    labels = results[0]["labels"]
+                  boxes = results[0]["boxes"]
+                  scores = results[0]["scores"]
+                  labels = results[0]["labels"]
         
-                    all_boxes.append(boxes)
-                    all_scores.append(scores)
-                    all_labels.append(labels)
+                  all_boxes.append(boxes)
+                  all_scores.append(scores)
+                  all_labels.append(labels)
         
-                # concat image
-                boxes, scores, labels = ImageProcessor(image_path).img_concat(imgs, all_boxes, all_scores, all_labels)
-            else:
-                # input image & text to OWLv2
-                inputs = self.owlv2_processor(text=text_prompt, images=image_pil, return_tensors="pt")
-                print(f"inputs before device: {inputs}")  # 로그 추가
-                inputs = {k: v.to(self.device) for k, v in inputs.items()}
-                print(f"inputs after device: {inputs}")  # 로그 추가
+              # concat image
+              boxes, scores, labels = ImageProcessor(image_path).img_concat(imgs, all_boxes, all_scores, all_labels)
+          else:
+              # input image & text to OWLv2
+              inputs = self.owlv2_processor(text=text_prompt, images=image_pil, return_tensors="pt")
+              print(f"inputs before device: {inputs}")  # 로그 추가
+              inputs = {k: v.to(self.device) for k, v in inputs.items()}
+              print(f"inputs after device: {inputs}")  # 로그 추가
                 
-                # OWLv2 inference
-                with torch.no_grad():
-                    outputs = self.owlv2_model(**inputs)
+              # OWLv2 inference
+              with torch.no_grad():
+                  outputs = self.owlv2_model(**inputs)
         
-                # extract boxes & scores
-                target_sizes = torch.Tensor([image_pil.size[::-1]]).to(self.device)
-                results = self.owlv2_processor.post_process_object_detection(outputs=outputs, target_sizes=target_sizes, threshold=box_threshold)
+              # extract boxes & scores
+              target_sizes = torch.Tensor([image_pil.size[::-1]]).to(self.device)
+              results = self.owlv2_processor.post_process_object_detection(outputs=outputs, target_sizes=target_sizes, threshold=box_threshold)
                       
-                boxes = results[0]["boxes"]
-                scores = results[0]["scores"]
-                labels = results[0]["labels"]
-            print("Owlv2 Work done.")
-            return boxes, scores, labels
+              boxes = results[0]["boxes"]
+              scores = results[0]["scores"]
+              labels = results[0]["labels"]
+          print("Owlv2 Work done.")
+          return boxes, scores, labels
         except Exception as e:
-            print(f"Error occurred: {str(e)}")
+          print(f"Error occurred: {str(e)}")
 
     def predict_sam(self, image_pil, boxes):
         image_array = np.asarray(image_pil)
