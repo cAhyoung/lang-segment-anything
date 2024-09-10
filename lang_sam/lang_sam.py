@@ -281,7 +281,7 @@ class LangSAM():
           boxes = boxes.to(self.device)
           masks, _, _ = self.sam2.predict(box=boxes)
           print("SAM2 Work done.")
-          return masks.cpu()
+          return masks
 
     def predict(self, image_pil, image_pil2, image_path, text_prompt, box_threshold=0.3, text_threshold=0.25):
         boxes, logits, phrases = self.predict_owlv2(image_pil, image_path, text_prompt, box_threshold, text_threshold)  # can change other models
