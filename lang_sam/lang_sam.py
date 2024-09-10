@@ -276,10 +276,8 @@ class LangSAM():
         return masks.cpu()
       
     def predict_sam2(self, image_pil, boxes):
-        transform = transforms.ToTensor()
-        image_tensor = transform(image_pil).to(self.device)
         with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
-          self.sam2.set_image(image_tensor)
+          self.sam2.set_image(image_pil)  
           boxes = boxes.to(self.device)
           masks, _, _ = self.sam2.predict(box=boxes)
           print("SAM2 Work done.")
