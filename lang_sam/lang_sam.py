@@ -57,6 +57,7 @@ def transform_image(image) -> torch.Tensor:
 
 
 class LangSAM():
+
     def __init__(self, sam_type="vit_h", sam2_type="hiera_large", ckpt_path=None, return_prompts: bool = False, split=True):
         self.sam_type = sam_type
         self.sam2_type = sam2_type
@@ -66,9 +67,8 @@ class LangSAM():
         self.build_groundingdino()
         self.build_sam(ckpt_path)
         self.build_owlv2() 
-        self.build_sam2()
-        ### Grounding DINO 1.5 build
         self.gdino = GroundingDINOAPIWrapper('key')
+        self.build_sam2()
 
     def build_sam(self, ckpt_path):
         if self.sam_type is None or ckpt_path is None:
@@ -154,7 +154,7 @@ class LangSAM():
                                              device=self.device)
             W, H = image_pil.size
             boxes = box_ops.box_cxcywh_to_xyxy(boxes) * torch.Tensor([W, H, W, H])
-        
+        print("DINO Work done.")
         return boxes, logits, phrases
 
     def predict_dino15(self, image_pil, image_path, text_prompt, box_threshold, text_threshold, return_mask=False):
@@ -198,7 +198,7 @@ class LangSAM():
             boxes = torch.tensor(results['boxes'])
             logits = torch.tensor(results['scores'])  # logits 대신 scores 사용
             phrases = results.get('labels', [])  # labels이 있는 경우에만 가져오기
-
+        print("DINO 1.5 Work done.")
         return boxes, logits, phrases
 
 
@@ -252,7 +252,7 @@ class LangSAM():
                 boxes = results[0]["boxes"]
                 scores = results[0]["scores"]
                 labels = results[0]["labels"]
-
+            print("Owlv2 Work done.")
             return boxes, scores, labels
         except Exception as e:
             print(f"Error occurred: {str(e)}")
@@ -269,6 +269,7 @@ class LangSAM():
             boxes=transformed_boxes.to(self.sam.device),
             multimask_output=False,
         )
+        print("SAM Work done.")
         return masks.cpu()
       
     def predict_sam2(self, image_pil, boxes):
@@ -276,13 +277,15 @@ class LangSAM():
           self.sam2.set_image(image_pil.to(self.device))
           boxes = boxes.to(self.device)
           masks, _, _ = self.sam2.predict(box=boxes)
-
+          print("SAM2 Work done.")
           return masks.cpu()
 
     def predict(self, image_pil, image_pil2, image_path, text_prompt, box_threshold=0.3, text_threshold=0.25):
         boxes, logits, phrases = self.predict_owlv2(image_pil, image_path, text_prompt, box_threshold, text_threshold)  # can change other models
+        print("Object detection is done.")
         masks = torch.tensor([])
         if len(boxes) > 0:
             masks = self.predict_sam2(image_pil2, boxes)  ## if you want to use sam2, you should change predict_sam2()
             masks = masks.squeeze(1)
+        print("Segmentation is done.")
         return masks, boxes, phrases, logits
