@@ -206,7 +206,6 @@ class LangSAM():
     def predict_owlv2(self, image_pil, image_path, text_prompt, box_threshold=0.3, text_threshold=0.25):
         inputs = None
         try:
-          inputs = None
           if self.split:  
               imgs = ImageProcessor(image_path, False).img_split()
               all_boxes = []
