@@ -2,6 +2,7 @@ import os
 import groundingdino.datasets.transforms as T
 import numpy as np
 import torch
+import torchvision.transforms as transforms
 from groundingdino.models import build_model
 from groundingdino.util import box_ops
 from groundingdino.util.inference import predict
@@ -203,6 +204,7 @@ class LangSAM():
 
 
     def predict_owlv2(self, image_pil, image_path, text_prompt, box_threshold=0.3, text_threshold=0.25):
+        inputs = None
         try:
           inputs = None
           if self.split:  
@@ -238,9 +240,9 @@ class LangSAM():
           else:
               # input image & text to OWLv2
               inputs = self.owlv2_processor(text=text_prompt, images=image_pil, return_tensors="pt")
-              print(f"inputs before device: {inputs}")  # 로그 추가
+              # print(f"inputs before device: {inputs}")  # 로그 추가
               inputs = {k: v.to(self.device) for k, v in inputs.items()}
-              print(f"inputs after device: {inputs}")  # 로그 추가
+              # print(f"inputs after device: {inputs}")  # 로그 추가
                 
               # OWLv2 inference
               with torch.no_grad():
@@ -274,8 +276,10 @@ class LangSAM():
         return masks.cpu()
       
     def predict_sam2(self, image_pil, boxes):
+        transform = transforms.ToTensor()
+        image_tensor = transform(image_pil).to(self.device)
         with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
-          self.sam2.set_image(image_pil.to(self.device))
+          self.sam2.set_image(image_tensor)
           boxes = boxes.to(self.device)
           masks, _, _ = self.sam2.predict(box=boxes)
           print("SAM2 Work done.")
