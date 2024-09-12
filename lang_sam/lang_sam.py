@@ -288,6 +288,7 @@ class LangSAM():
         masks = torch.tensor([])
         if len(boxes) > 0:
             masks = self.predict_sam2(image_pil2, boxes)  ## if you want to use sam2, you should change predict_sam2()
-            masks = masks.squeeze(1)
+            if masks.shape[1] == 1:
+                masks = masks.squeeze(1)
         print("Segmentation is done.")
         return masks, boxes, phrases, logits
